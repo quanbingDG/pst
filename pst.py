@@ -7,9 +7,8 @@
 
 import pandas as pd
 import numpy as np
+import toad
 from tqdm import tqdm
-from toad import detect
-from toad import quality
 from pathlib import Path
 from pst_metrics import mutual_info_matrix
 from utils import check_is_dir, rescaling, save_fig
@@ -33,10 +32,12 @@ class Pst:
         self._plot_ar = {}
         self._vars_type_mapping = None
         self._taget = target
+        self._model_columns = ori_data.columns.to_list()
         self._corr_matrix = {}
+        self._combiner = toad.transform.Combiner()
+        self._woe_transer = toad.transform.WOETransformer()
         self._flag_corr_matrix = False
         self._flag_univariate_analysis = False
-
 
     @property
     def ori_data(self):
@@ -61,7 +62,7 @@ class Pst:
     @property
     def desc(self):
         if self._detect_data is None:
-            self._detect_data = detect(self._target_data)
+            self._detect_data = toad.detect(self._target_data)
             self._vars_type_mapping = dict(zip(self._detect_data.index.to_list(),
                                                self._detect_data.type.astype(str).to_list()))
             # print(self._vars_type_mapping)
@@ -84,6 +85,12 @@ class Pst:
 
         return self._corr_matrix
 
+    @property
+    def data_quality(self):
+        if not self._quality_data:
+            self._quality_data = toad.quality(self._target_data, target=self._target_data)
+        return self._quality_data
+
     def univariate_analysis(self, ar=False) -> str:
         # 1. plot the vars distribute
         # 2. plot the vars distribute group by target
@@ -100,7 +107,6 @@ class Pst:
                     if ar:
                         self._plot_ar[var] = cap_plot(rescaling(self._target_data[var]),
                                                       self._target_data[self._taget])
-
                 else:
                     self._plot_distribute[var] = hist_distribute(self._target_data[var], var)
 
@@ -121,6 +127,16 @@ class Pst:
         save_fig(self._plot_distribute_target, save_dir_path, type_str='distribute_taget')
         save_fig(self._plot_ar, save_dir_path, type_str='ar')
 
+    def feature_select(self, empty: float = 0.9, iv: float = 0.02, corr: float = 0.7, return_drop: bool = False,
+                       exclude=None):
+
+        re_select = toad.select(self._target_data, empty=empty, iv=iv, corr=corr, return_drop=return_drop,
+                                exclude=exclude)
+
+        if not return_drop:
+            self._model_columns = re_select.columns.to_list()
+        self._model_columns = re_select[0].columns.to_list()
+
 
 if __name__ == '__main__':
     data = pd.read_csv(r'/Users/quanbing/Downloads/workspace/competition/binary classification/交通事故理赔审核/data/'
@@ -130,8 +146,8 @@ if __name__ == '__main__':
     bx = Pst(data, 'Evaluation')
     bx.desc
     # print(bx.corr_matrix)
-    # bx.univariate_analysis()
-    # bx.save_figure(r'/Users/quanbing/Downloads/code/tmp')
+    bx.univariate_analysis()
+    bx.save_figure(r'/Users/quanbing/Downloads/code/tmp')
 
 
 
